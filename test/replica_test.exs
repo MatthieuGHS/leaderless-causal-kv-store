@@ -2,6 +2,11 @@ defmodule CausalKv.ReplicaTest do
   use ExUnit.Case
   alias CausalKv.Replica
 
+  setup do
+    CausalKv.Net.clear()
+    :ok
+  end
+
   test "get sur une clé inconnue renvoie []" do
     r = start_supervised!({Replica, id: 1})
     assert Replica.get(r, :x) == []

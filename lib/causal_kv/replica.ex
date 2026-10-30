@@ -32,7 +32,7 @@ defmodule CausalKv.Replica do
 
   defp send_others(state, msg) do
     for j <- [1, 2, 3], j != state.id do
-      GenServer.cast(name(j), {:urb, msg})
+      CausalKv.Net.send(state.id, j, {:urb, msg})
     end
   end
 
