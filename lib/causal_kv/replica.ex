@@ -4,7 +4,7 @@ defmodule CausalKv.Replica do
   # ---------- API client ----------
 
   def name(id), do: :"replica_#{id}"
-  def start_link(id), do: GenServer.start_link(__MODULE__, id, name: name(id))
+  def start_link(ops), do: GenServer.start_link(__MODULE__, ops, name: name(Keyword.get(ops, :id)))
 
   def get(pid, key) do
     GenServer.call(pid, {:get, key})
@@ -17,9 +17,10 @@ defmodule CausalKv.Replica do
   # ---------- Callbacks ----------
 
   @impl true
-  def init(id) do
+  def init(ops) do
     state = %{
-      id: id,
+      id: Keyword.get(ops, :id),
+      mode: Keyword.get(ops, :mode, :co),
       seen: MapSet.new(),
       pending: [],
       cp: %{1 => 0, 2 => 0, 3 => 0},
@@ -52,13 +53,14 @@ defmodule CausalKv.Replica do
 
   @impl true
   def handle_cast({:urb, m}, state) do
-    if MapSet.member?(state.seen, m.id) do
-      {:noreply, state}
-    else
-      state = Map.update!(state, :seen, fn seen -> MapSet.put(seen, m.id) end)
-      send_others(state, m)
-      state = Map.update!(state, :pending, fn pending -> [m | pending] end)
-      {:noreply, try_deliver(state)}
+    cond do
+      state.mode == :naive             -> {:noreply, deliver(state, m)}
+      MapSet.member?(state.seen, m.id) -> {:noreply, state}
+      true                             ->
+        state = Map.update!(state, :seen, fn seen -> MapSet.put(seen, m.id) end)
+        send_others(state, m)
+        state = Map.update!(state, :pending, fn pending -> [m | pending] end)
+        {:noreply, try_deliver(state)}
     end
   end
 
