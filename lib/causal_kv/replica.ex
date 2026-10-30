@@ -57,7 +57,8 @@ defmodule CausalKv.Replica do
     else
       state = Map.update!(state, :seen, fn seen -> MapSet.put(seen, m.id) end)
       send_others(state, m)
-      {:noreply, Map.update!(state, :pending, fn pending -> [m | pending] end)}
+      state = Map.update!(state, :pending, fn pending -> [m | pending] end)
+      {:noreply, try_deliver(state)}
     end
   end
 
@@ -66,6 +67,16 @@ defmodule CausalKv.Replica do
     cp  = Map.update!(state.cp, m.sender, fn x -> x + 1 end)
     versions = CausalKv.Store.apply_write(Map.get(state.store, m.key, []), {m.value, vec})
     %{state | cp: cp, store: Map.put(state.store, m.key, versions)}
+  end
+
+  defp try_deliver(state) do
+    case Enum.find(state.pending, fn m -> CausalKv.Store.leq?(m.cp, state.cp) end) do
+      nil -> state
+      m ->
+        state = %{state | pending: List.delete(state.pending, m)}
+        state = deliver(state, m)
+        try_deliver(state)
+    end
   end
 
 end
