@@ -95,4 +95,41 @@ defmodule CausalKv.ReplicaTest do
 
     assert Replica.get(r2, :x) == [1]
   end
+
+  test "Net : un message en :drop n'arrive jamais" do
+    r1 = start_supervised!({Replica, id: 1}, id: :r1)
+    r2 = start_supervised!({Replica, id: 2}, id: :r2)
+    CausalKv.Net.set(1, 2, :drop)
+
+    Replica.put(r1, :x, 1)
+    Process.sleep(50)
+
+    assert Replica.get(r2, :x) == []
+  end
+
+  test "Net : un message retardé arrive après le délai" do
+    r1 = start_supervised!({Replica, id: 1}, id: :r1)
+    r2 = start_supervised!({Replica, id: 2}, id: :r2)
+    CausalKv.Net.set(1, 2, 200)
+
+    Replica.put(r1, :x, 1)
+    Process.sleep(50)
+    assert Replica.get(r2, :x) == []      # pas encore arrivé
+
+    Process.sleep(250)
+    assert Replica.get(r2, :x) == [1]     # arrivé
+  end
+
+  test "le log enregistre l'ordre de délivrance" do
+    r1 = start_supervised!({Replica, id: 1}, id: :r1)
+    r2 = start_supervised!({Replica, id: 2}, id: :r2)
+
+    Replica.put(r1, :x, 1)
+    Replica.put(r1, :y, 2)
+    Process.sleep(50)
+
+    assert :sys.get_state(r1).log == [{1, 1}, {1, 2}]
+    assert :sys.get_state(r2).log == [{1, 1}, {1, 2}]
+  end
+
 end

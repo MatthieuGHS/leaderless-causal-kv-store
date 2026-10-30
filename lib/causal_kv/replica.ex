@@ -24,7 +24,8 @@ defmodule CausalKv.Replica do
       seen: MapSet.new(),
       pending: [],
       cp: %{1 => 0, 2 => 0, 3 => 0},
-      store: %{}
+      store: %{},
+      log: []
     }
 
     {:ok, state}
@@ -68,7 +69,7 @@ defmodule CausalKv.Replica do
     vec = CausalKv.Store.version(m.cp, m.sender)
     cp  = Map.update!(state.cp, m.sender, fn x -> x + 1 end)
     versions = CausalKv.Store.apply_write(Map.get(state.store, m.key, []), {m.value, vec})
-    %{state | cp: cp, store: Map.put(state.store, m.key, versions)}
+    %{state | cp: cp, store: Map.put(state.store, m.key, versions), log: state.log ++ [m.id]}
   end
 
   defp try_deliver(state) do
