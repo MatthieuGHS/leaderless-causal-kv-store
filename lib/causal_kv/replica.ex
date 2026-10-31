@@ -4,7 +4,9 @@ defmodule CausalKv.Replica do
   # ---------- API client ----------
 
   def name(id), do: :"replica_#{id}"
-  def start_link(ops), do: GenServer.start_link(__MODULE__, ops, name: name(Keyword.get(ops, :id)))
+
+  def start_link(ops),
+    do: GenServer.start_link(__MODULE__, ops, name: name(Keyword.get(ops, :id)))
 
   def get(pid, key) do
     GenServer.call(pid, {:get, key})
@@ -45,7 +47,14 @@ defmodule CausalKv.Replica do
 
   @impl true
   def handle_call({:put, key, value}, _from, state) do
-    m = %{id: {state.id, state.cp[state.id] + 1}, sender: state.id, cp: state.cp, key: key, value: value}
+    m = %{
+      id: {state.id, state.cp[state.id] + 1},
+      sender: state.id,
+      cp: state.cp,
+      key: key,
+      value: value
+    }
+
     state = Map.update!(state, :seen, fn seen -> MapSet.put(seen, m.id) end)
     send_others(state, m)
     state = deliver(state, m)
@@ -55,9 +64,13 @@ defmodule CausalKv.Replica do
   @impl true
   def handle_cast({:urb, m}, state) do
     cond do
-      state.mode == :naive             -> {:noreply, deliver(state, m)}
-      MapSet.member?(state.seen, m.id) -> {:noreply, state}
-      true                             ->
+      state.mode == :naive ->
+        {:noreply, deliver(state, m)}
+
+      MapSet.member?(state.seen, m.id) ->
+        {:noreply, state}
+
+      true ->
         state = Map.update!(state, :seen, fn seen -> MapSet.put(seen, m.id) end)
         send_others(state, m)
         state = Map.update!(state, :pending, fn pending -> [m | pending] end)
@@ -67,19 +80,20 @@ defmodule CausalKv.Replica do
 
   defp deliver(state, m) do
     vec = CausalKv.Store.version(m.cp, m.sender)
-    cp  = Map.update!(state.cp, m.sender, fn x -> x + 1 end)
+    cp = Map.update!(state.cp, m.sender, fn x -> x + 1 end)
     versions = CausalKv.Store.apply_write(Map.get(state.store, m.key, []), {m.value, vec})
     %{state | cp: cp, store: Map.put(state.store, m.key, versions), log: state.log ++ [m.id]}
   end
 
   defp try_deliver(state) do
     case Enum.find(state.pending, fn m -> CausalKv.Store.leq?(m.cp, state.cp) end) do
-      nil -> state
+      nil ->
+        state
+
       m ->
         state = %{state | pending: List.delete(state.pending, m)}
         state = deliver(state, m)
         try_deliver(state)
     end
   end
-
 end

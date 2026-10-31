@@ -19,9 +19,11 @@ defmodule CausalKv.ScenariosTest do
   # ------------------------------------------------------------------
   defp crash_scenario(mode) do
     [r1, r2, r3] = start_replicas(mode)
-    Net.set(1, 3, :drop)            # R1 n'a pas eu le temps d'envoyer à R3…
+    # R1 n'a pas eu le temps d'envoyer à R3…
+    Net.set(1, 3, :drop)
     Replica.put(r1, :x, 1)
-    stop_supervised(:r1)            # …et crashe
+    # …et crashe
+    stop_supervised(:r1)
     Process.sleep(100)
     {r2, r3}
   end
@@ -29,7 +31,8 @@ defmodule CausalKv.ScenariosTest do
   test "naïf : si l'émetteur crashe, R3 ne reçoit jamais l'écriture" do
     {r2, r3} = crash_scenario(:naive)
     assert Replica.get(r2, :x) == [1]
-    assert Replica.get(r3, :x) == []         # divergence définitive
+    # divergence définitive
+    assert Replica.get(r3, :x) == []
   end
 
   test "CO-URB : R2 relaie, R3 reçoit quand même l'écriture" do
@@ -46,37 +49,49 @@ defmodule CausalKv.ScenariosTest do
   defp qa_scenario(mode) do
     [r1, r2, r3] = start_replicas(mode)
     Net.set(1, 3, 300)
-    Net.set(2, 3, 300)              # retarde aussi le relais de la question par R2
+    # retarde aussi le relais de la question par R2
+    Net.set(2, 3, 300)
 
     Replica.put(r1, :q, "question?")
-    Process.sleep(50)               # R2 a reçu la question
-    Net.set(2, 3, 0)                # à partir de maintenant, R2 → R3 est rapide
-    Replica.put(r2, :a, "réponse!") # la réponse dépend causalement de la question
+    # R2 a reçu la question
+    Process.sleep(50)
+    # à partir de maintenant, R2 → R3 est rapide
+    Net.set(2, 3, 0)
+    # la réponse dépend causalement de la question
+    Replica.put(r2, :a, "réponse!")
 
-    Process.sleep(50)               # la réponse est arrivée sur R3, pas la question
+    # la réponse est arrivée sur R3, pas la question
+    Process.sleep(50)
+
     mid = %{
       q: Replica.get(r3, :q),
       a: Replica.get(r3, :a),
       pending: length(:sys.get_state(r3).pending)
     }
 
-    Process.sleep(500)              # tout est arrivé
+    # tout est arrivé
+    Process.sleep(500)
     {mid, :sys.get_state(r3).log}
   end
 
   test "naïf : R3 voit la réponse avant la question" do
     {mid, log} = qa_scenario(:naive)
     assert mid.a == ["réponse!"]
-    assert mid.q == []                       # anomalie : réponse sans question
-    assert log == [{2, 1}, {1, 1}]           # ordre causal violé
+    # anomalie : réponse sans question
+    assert mid.q == []
+    # ordre causal violé
+    assert log == [{2, 1}, {1, 1}]
   end
 
   test "CO-URB : R3 met la réponse en attente jusqu'à la question" do
     {mid, log} = qa_scenario(:co)
-    assert mid.a == []                       # réponse bloquée…
+    # réponse bloquée…
+    assert mid.a == []
     assert mid.q == []
-    assert mid.pending == 1                  # …dans pending
-    assert log == [{1, 1}, {2, 1}]           # ordre causal respecté
+    # …dans pending
+    assert mid.pending == 1
+    # ordre causal respecté
+    assert log == [{1, 1}, {2, 1}]
   end
 
   # ------------------------------------------------------------------

@@ -114,10 +114,12 @@ defmodule CausalKv.ReplicaTest do
 
     Replica.put(r1, :x, 1)
     Process.sleep(50)
-    assert Replica.get(r2, :x) == []      # pas encore arrivé
+    # pas encore arrivé
+    assert Replica.get(r2, :x) == []
 
     Process.sleep(250)
-    assert Replica.get(r2, :x) == [1]     # arrivé
+    # arrivé
+    assert Replica.get(r2, :x) == [1]
   end
 
   test "le log enregistre l'ordre de délivrance" do
@@ -131,5 +133,4 @@ defmodule CausalKv.ReplicaTest do
     assert :sys.get_state(r1).log == [{1, 1}, {1, 2}]
     assert :sys.get_state(r2).log == [{1, 1}, {1, 2}]
   end
-
 end
